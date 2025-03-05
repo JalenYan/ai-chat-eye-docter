@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from .models.chat import ChatCompletionRequest, ChatCompletionResponse, ErrorResponse, Message
 from .services.llm_service import llm_service
 from .utils.config import settings
-
+from .utils.register2nacos_config import init_app
 # Configure logging
 logging.basicConfig(level=getattr(logging, settings.log_level.upper()))
 logger = logging.getLogger(__name__)
@@ -40,7 +40,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+# Initialize Nacos configuration
+init_app()
 # Add request processing middleware for logging and performance monitoring
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

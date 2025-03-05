@@ -4,7 +4,7 @@ This document provides instructions on how to test the Chat API Service to verif
 
 ## Prerequisites
 
-- Python 3.8 or higher
+- Python 3.10
 - Docker and Docker Compose (optional)
 - Required dependencies (installed in virtual environment or globally)
 
@@ -22,6 +22,9 @@ This document provides instructions on how to test the Chat API Service to verif
    PORT=8000
    HOST=0.0.0.0
    LOG_LEVEL=info
+   
+   # Eye Doctor API 配置 (for testing test_eye_doctor.py)
+   API_BASE=http://localhost:8000
    ```
 
 2. Install required dependencies:
@@ -29,12 +32,12 @@ This document provides instructions on how to test the Chat API Service to verif
    ```bash
    pip install -r requirements.txt
    pip install requests  # For testing
+   pip install httpx    # For async HTTP requests
    ```
 
 ## Running the Service
 
 ### Option 1: Using Python
-
 ```bash
 python run.py
 ```
@@ -88,6 +91,44 @@ Examples:
 - `python test_complete.py "Tell me a joke"`
 - `python test_complete.py "What's the weather like?" false`
 - `python test_complete.py "Write a poem" true 200`
+
+### 5. Testing the Eye Doctor Chat API
+
+Use the `test_eye_doctor.py` script to test the Eye Doctor Chat functionality in both standard and streaming modes.
+
+```bash
+python test_eye_doctor.py [mode]
+```
+
+Where `mode` is one of:
+- `standard`: Tests only the standard (non-streaming) mode
+- `streaming`: Tests only the streaming mode
+- `both`: Tests both modes (default if no mode is specified)
+
+Example usage:
+```bash
+# Test both modes
+python test_eye_doctor.py
+
+# Test only streaming mode
+python test_eye_doctor.py streaming
+
+# Test only standard mode
+python test_eye_doctor.py standard
+```
+
+The script sends a sample eye doctor consultation request with the following data:
+- Disease information (name, category, diagnosis result)
+- Treatment plan
+- Medication details
+- Previous conversation history
+- User's current question
+
+The test will display:
+- For standard mode: The complete response including content and metadata
+- For streaming mode: The response as it streams in, followed by complete content and metadata
+
+This test verifies that the Eye Doctor Chat API correctly processes medical information and patient questions in both streaming and non-streaming modes.
 
 ## Troubleshooting
 

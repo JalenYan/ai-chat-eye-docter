@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    env_file:
+      - .env
+    environment:
+      - BASE_URL=${BASE_URL}
+      - API_KEY=${API_KEY}
+      - MODEL_ID=${MODEL_ID}
+      - PORT=${PORT:-8000}
+      - HOST=${HOST:-0.0.0.0}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    command: python -m uvicorn app.main:app --host ${HOST:-0.0.0.0} --port ${PORT:-8000} --reload
+    restart: unless-stopped 

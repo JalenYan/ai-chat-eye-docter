@@ -4,6 +4,7 @@ import httpx
 from openai import AsyncOpenAI, APIError, RateLimitError
 from ..utils.config import settings
 from ..models.chat import Message, TokenUsage
+from ..utils.prompts import construct_prompt
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -101,6 +102,69 @@ class LLMService:
         except Exception as e:
             logger.error(f"Unexpected error calling OpenAI API: {str(e)}")
             raise Exception(f"Error processing request: {str(e)}")
+    
+    async def get_eye_doctor_completion(
+        self,
+        request_data: Dict[str, Any],
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        stream: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Get specialized eye doctor chat completion response
+        
+        Args:
+            request_data: Dictionary containing patient information and question
+            model: Model name to use, defaults to configured model
+            temperature: Controls randomness in generation, defaults to 0.7
+            max_tokens: Maximum number of tokens to generate, defaults to None
+            stream: Whether to use streaming response, defaults to False
+            
+        Returns:
+            Dictionary containing generated message and token usage statistics
+            
+        Raises:
+            Exception: Various exceptions related to API errors
+        """
+        try:
+            # Construct specialized prompt using prompt engineering
+            system_prompt, user_message = construct_prompt(request_data)
+            
+            # Create messages list
+            messages = [
+                Message(role="system", content=system_prompt),
+                Message(role="user", content=user_message)
+            ]
+            
+            # Add previous conversation context if available
+            previous_conversations = request_data.get('previous_conversations', [])
+            if previous_conversations:
+                # Reset messages to just include system prompt
+                messages = [Message(role="system", content=system_prompt)]
+                
+                # Add each message from previous conversations
+                for msg in previous_conversations:
+                    role = msg.get('role')
+                    content = msg.get('content')
+                    if role in ['user', 'assistant'] and content:
+                        messages.append(Message(role=role, content=content))
+                
+                # Add the current user query at the end
+                messages.append(Message(role="user", content=user_message))
+            
+            # Call the standard chat completion method
+            return await self.get_chat_completion(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=stream
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in eye doctor completion: {str(e)}")
+            raise Exception(f"Error processing eye doctor request: {str(e)}")
 
 # Create service instance
 llm_service = LLMService() 

@@ -1,10 +1,13 @@
 import logging
 import time
+import json
+from typing import Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from contextlib import asynccontextmanager
-from .models.chat import ChatCompletionRequest, ChatCompletionResponse, ErrorResponse
+from pydantic import BaseModel, Field
+from .models.chat import ChatCompletionRequest, ChatCompletionResponse, ErrorResponse, Message
 from .services.llm_service import llm_service
 from .utils.config import settings
 
@@ -101,6 +104,160 @@ async def chat_completions(request: ChatCompletionRequest):
         
     except Exception as e:
         logger.error(f"Error in chat completion: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+# Eye Doctor chat model classes
+class EyeDoctorRequest(BaseModel):
+    """Eye doctor chat request model"""
+    disease_name: str = Field(..., description="Name of the diagnosed disease")
+    disease_category: str = Field(..., description="Category of the disease")
+    result: str = Field(..., description="Examination result")
+    remark: Optional[str] = Field(None, description="Additional remarks")
+    treatment_plan: Optional[Dict[str, Any]] = Field(None, description="Treatment plan details")
+    medications: Optional[list] = Field(None, description="List of medications")
+    previous_conversations: Optional[list] = Field(None, description="Previous conversation history")
+    question: str = Field(..., description="Patient's question")
+    model: Optional[str] = Field(None, description="LLM model to use")
+    temperature: Optional[float] = Field(0.7, description="Temperature for generation", ge=0.0, le=2.0)
+    max_tokens: Optional[int] = Field(None, description="Maximum tokens to generate")
+    stream: Optional[bool] = Field(False, description="Whether to stream the response")
+
+class EyeDoctorResponse(BaseModel):
+    """Eye doctor chat response model"""
+    response_id: str = Field(..., description="Unique response ID")
+    content: str = Field(..., description="Response content")
+    references: Optional[list] = Field(None, description="References used")
+    created_at: str = Field(..., description="Response creation timestamp")
+
+# Eye Doctor chat endpoint
+@app.post("/api/eye-doctor/chat", response_model=EyeDoctorResponse)
+async def eye_doctor_chat(request: EyeDoctorRequest):
+    """
+    Process eye doctor chat requests
+    
+    Receives patient data and question, constructs specialized prompts,
+    calls the LLM, and returns a formatted response
+    """
+    try:
+        import uuid
+        from datetime import datetime, timezone
+        
+        # Generate a unique response ID
+        response_id = str(uuid.uuid4())
+        
+        # Convert request to dictionary
+        request_data = request.model_dump()
+        
+        # Call the eye doctor completion service
+        result = await llm_service.get_eye_doctor_completion(
+            request_data=request_data,
+            model=request.model,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            stream=request.stream
+        )
+        
+        # Handle streaming response
+        if request.stream and result.get("stream"):
+            async def generate():
+                try:
+                    chunk_id = 0
+                    complete_content = ""
+                    
+                    async for chunk in result["stream"]:
+                        chunk_id += 1
+                        content = chunk.choices[0].delta.content or ""
+                        complete_content += content
+                        
+                        # Check if this is the last chunk
+                        is_complete = chunk.choices[0].finish_reason is not None
+                        
+                        # Create response chunk
+                        response_chunk = {
+                            "response_id": response_id,
+                            "chunk_id": chunk_id,
+                            "content": content,
+                            "is_complete": is_complete
+                        }
+                        
+                        # For the last chunk, include references and timestamp
+                        if is_complete:
+                            # Extract references if they exist
+                            references = []
+                            # Simple reference extraction logic - could be more sophisticated
+                            if "参考资料" in complete_content:
+                                ref_section = complete_content.split("参考资料")[-1]
+                                ref_lines = [line.strip() for line in ref_section.split("\n") if line.strip()]
+                                for line in ref_lines:
+                                    parts = line.split(",")
+                                    if len(parts) >= 2:
+                                        ref = {"title": parts[0].strip("- ")}
+                                        if len(parts) > 1:
+                                            ref["source"] = parts[1].strip()
+                                        if len(parts) > 2:
+                                            try:
+                                                ref["year"] = int(parts[2].strip())
+                                            except ValueError:
+                                                pass
+                                        references.append(ref)
+                            
+                            response_chunk["references"] = references
+                            response_chunk["created_at"] = datetime.now(timezone.utc).isoformat()
+                            
+                        yield f"data: {json.dumps(response_chunk)}\n\n"
+                        
+                except Exception as e:
+                    logger.error(f"Error in streaming: {str(e)}")
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                finally:
+                    yield "data: [DONE]\n\n"
+                    
+            return StreamingResponse(generate(), media_type="text/event-stream")
+            
+        # Handle regular response
+        if result.get("message"):
+            # Extract content from message
+            content = result["message"].content
+            
+            # Extract references if they exist
+            references = []
+            # Simple reference extraction logic - could be more sophisticated
+            if "参考资料" in content:
+                ref_section = content.split("参考资料")[-1]
+                ref_lines = [line.strip() for line in ref_section.split("\n") if line.strip()]
+                for line in ref_lines:
+                    parts = line.split(",")
+                    if len(parts) >= 2:
+                        ref = {"title": parts[0].strip("- ")}
+                        if len(parts) > 1:
+                            ref["source"] = parts[1].strip()
+                        if len(parts) > 2:
+                            try:
+                                ref["year"] = int(parts[2].strip())
+                            except ValueError:
+                                pass
+                        references.append(ref)
+            
+            # Create response
+            response = {
+                "response_id": response_id,
+                "content": content,
+                "references": references,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            return response
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate response"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in eye doctor chat: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)

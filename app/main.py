@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from contextlib import asynccontextmanager
 from pydantic import BaseModel, Field
 from .models.chat import ChatCompletionRequest, ChatCompletionResponse, ErrorResponse, Message
+from .models.eye_doctor import EyeDoctorRequest, EyeDoctorResponse
 from .services.llm_service import llm_service
 from .utils.config import settings
 
@@ -108,29 +109,6 @@ async def chat_completions(request: ChatCompletionRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
-
-# Eye Doctor chat model classes
-class EyeDoctorRequest(BaseModel):
-    """Eye doctor chat request model"""
-    disease_name: str = Field(..., description="Name of the diagnosed disease")
-    disease_category: str = Field(..., description="Category of the disease")
-    result: str = Field(..., description="Examination result")
-    remark: Optional[str] = Field(None, description="Additional remarks")
-    treatment_plan: Optional[Dict[str, Any]] = Field(None, description="Treatment plan details")
-    medications: Optional[list] = Field(None, description="List of medications")
-    previous_conversations: Optional[list] = Field(None, description="Previous conversation history")
-    question: str = Field(..., description="Patient's question")
-    model: Optional[str] = Field(None, description="LLM model to use")
-    temperature: Optional[float] = Field(0.7, description="Temperature for generation", ge=0.0, le=2.0)
-    max_tokens: Optional[int] = Field(None, description="Maximum tokens to generate")
-    stream: Optional[bool] = Field(False, description="Whether to stream the response")
-
-class EyeDoctorResponse(BaseModel):
-    """Eye doctor chat response model"""
-    response_id: str = Field(..., description="Unique response ID")
-    content: str = Field(..., description="Response content")
-    references: Optional[list] = Field(None, description="References used")
-    created_at: str = Field(..., description="Response creation timestamp")
 
 # Eye Doctor chat endpoint
 @app.post("/api/eye-doctor/chat", response_model=EyeDoctorResponse)

@@ -1,6 +1,6 @@
 # ChatGPT API Service
 
-一个无状态的FastAPI服务，用于与ChatGPT进行交互。该服务设计为由Java后端调用，Java后端负责管理聊天历史和用户会话。
+一个无状态的FastAPI服务，用于与ChatGPT进行交互。该服务设计为由Java后端调用，Java后端负责(通过配置openfeign远程调用fastApi接口)管理聊天历史和用户会话。
 
 ## 功能特点
 

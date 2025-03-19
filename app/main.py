@@ -314,6 +314,7 @@ async def get_ai_recommendations(request: AIRecommendationRequest):
             detail=str(e)
         )
 
+
 # If this file is run directly
 if __name__ == "__main__":
     import uvicorn
@@ -322,4 +323,4 @@ if __name__ == "__main__":
         host=settings.host,
         port=settings.port,
         reload=True
-    ) 
+    )

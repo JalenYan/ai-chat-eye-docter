@@ -271,4 +271,73 @@ def construct_prompt(request_data):
     else:
         user_message = user_input
     
-    return SYSTEM_PROMPT, user_message 
+    return SYSTEM_PROMPT, user_message
+
+# AI Recommendation System Prompts
+RECOMMENDATION_SYSTEM_PROMPT = """你是一位经验丰富的眼科医生AI助手。你的任务是根据患者的诊断和信息提供用药和治疗建议。
+你必须严格按照以下JSON格式回复，不要添加任何其他文字或解释：
+
+{
+    "medications": [
+        {
+            "medication_name": "药品名称",
+            "dosage": "具体剂量说明",
+            "frequency": "用药频率",
+            "side_effects": "可能的副作用"
+        }
+    ],
+    "treatment_plan": {
+        "treatment_type": "治疗类型（如：药物治疗、手术治疗等）",
+        "treatment_detail": "详细的治疗说明"
+    }
+}
+
+注意事项：
+1. 必须严格按照上述JSON格式回复
+2. 所有字段都必须填写，不能省略
+3. medications字段是一个数组，也就是说你可以推荐多个药品
+4. 不要添加任何其他说明文字
+5. 确保输出是有效的JSON格式
+6. 使用中文回复所有内容"""
+
+RECOMMENDATION_USER_TEMPLATE = """请为以下患者提供用药和治疗建议：
+
+患者信息：
+- 姓名：{name}
+- 性别：{sex}
+- 年龄：{age}岁
+
+诊断信息：
+- 疾病：{disease_name}
+- 类别：{disease_category}
+- 诊断结果：{result}
+
+请严格按照指定的JSON格式提供建议，不要添加任何其他说明文字。"""
+
+def construct_recommendation_prompt(request_data):
+    """
+    Construct prompts for the AI recommendation system
+    
+    Args:
+        request_data: Dictionary containing patient and disease information
+        
+    Returns:
+        Tuple of (system_prompt, user_message)
+    """
+    # Get patient info
+    patient_info = request_data.get('patient_info', {})
+    name = patient_info.get('name', '未知')
+    age = patient_info.get('age', '未知')
+    sex = patient_info.get('sex', '未知')
+    
+    # Format user message
+    user_message = RECOMMENDATION_USER_TEMPLATE.format(
+        disease_name=request_data.get('disease_name', '未知疾病'),
+        disease_category=request_data.get('disease_category', '未知类别'),
+        result=request_data.get('result', '无检查结果'),
+        name=name,
+        age=age,
+        sex=sex
+    )
+    
+    return RECOMMENDATION_SYSTEM_PROMPT, user_message 

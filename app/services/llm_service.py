@@ -1,10 +1,11 @@
 from typing import List, Dict, Any, Optional
 import logging
 import httpx
+import json
 from openai import AsyncOpenAI, APIError, RateLimitError
 from ..utils.config import settings
 from ..models.chat import Message, TokenUsage
-from ..utils.prompts import construct_prompt
+from ..utils.prompts import construct_prompt, construct_recommendation_prompt
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -165,6 +166,99 @@ class LLMService:
         except Exception as e:
             logger.error(f"Error in eye doctor completion: {str(e)}")
             raise Exception(f"Error processing eye doctor request: {str(e)}")
+
+    async def get_eye_doctor_recommendations(
+        self,
+        request_data: Dict[str, Any],
+        stream: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Get AI-generated medication and treatment recommendations
+        
+        Args:
+            request_data: Dictionary containing patient and disease information
+            stream: Whether to use streaming response, defaults to False
+            
+        Returns:
+            Dictionary containing recommended medications and treatment plan
+            
+        Raises:
+            Exception: Various exceptions related to API errors
+        """
+        try:
+            # Construct specialized prompt for recommendations
+            system_prompt, user_message = construct_recommendation_prompt(request_data)
+            
+            # Create messages list
+            messages = [
+                Message(role="system", content=system_prompt),
+                Message(role="user", content=user_message)
+            ]
+            
+            # Call the chat completion method with stricter parameters
+            result = await self.get_chat_completion(
+                messages=messages,
+                temperature=0.3,  # Lower temperature for more consistent output
+                stream=stream,
+                max_tokens=1000  # Limit response length
+            )
+            
+            if stream:
+                return {"stream": result["stream"]}
+            
+            # Parse and validate the response content
+            try:
+                content = result["message"].content.strip()
+                
+                # Try to find JSON content if there's any extra text
+                if content.find('{') != 0:
+                    start = content.find('{')
+                    end = content.rfind('}') + 1
+                    if start >= 0 and end > start:
+                        content = content[start:end]
+                
+                recommendations = json.loads(content)
+                
+                # Validate the structure
+                if not isinstance(recommendations, dict):
+                    raise ValueError("Response is not a JSON object")
+                
+                if "medications" not in recommendations or "treatment_plan" not in recommendations:
+                    raise ValueError("Missing required fields: medications or treatment_plan")
+                
+                if not isinstance(recommendations["medications"], list):
+                    raise ValueError("medications must be an array")
+                
+                if not isinstance(recommendations["treatment_plan"], dict):
+                    raise ValueError("treatment_plan must be an object")
+                
+                # Validate medications
+                for med in recommendations["medications"]:
+                    required_fields = ["medication_name", "dosage", "frequency", "side_effects"]
+                    missing_fields = [f for f in required_fields if f not in med]
+                    if missing_fields:
+                        raise ValueError(f"Medication missing required fields: {', '.join(missing_fields)}")
+                
+                # Validate treatment plan
+                required_fields = ["treatment_type", "treatment_detail"]
+                missing_fields = [f for f in required_fields if f not in recommendations["treatment_plan"]]
+                if missing_fields:
+                    raise ValueError(f"Treatment plan missing required fields: {', '.join(missing_fields)}")
+                
+                return {"recommendations": recommendations}
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"Error parsing recommendations JSON: {str(e)}")
+                logger.error(f"Raw content: {result['message'].content}")
+                raise Exception("Invalid JSON format in model response")
+            except ValueError as e:
+                logger.error(f"Invalid recommendations format: {str(e)}")
+                logger.error(f"Parsed content: {recommendations}")
+                raise Exception(f"Invalid recommendations format: {str(e)}")
+            
+        except Exception as e:
+            logger.error(f"Error in eye doctor recommendations: {str(e)}")
+            raise Exception(f"Error generating recommendations: {str(e)}")
 
 # Create service instance
 llm_service = LLMService() 

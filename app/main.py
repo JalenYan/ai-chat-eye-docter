@@ -8,6 +8,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from contextlib import asynccontextmanager
 from pydantic import BaseModel, Field
 from .models.chat import ChatCompletionRequest, ChatCompletionResponse, ErrorResponse, Message
+from .models.eye_doctor import (
+    EyeDoctorRequest, 
+    EyeDoctorResponse, 
+    AIRecommendationRequest, 
+    AIRecommendationResponse
+)
 from .services.llm_service import llm_service
 from .utils.config import settings
 from .utils.register2nacos_config import init_app
@@ -109,29 +115,6 @@ async def chat_completions(request: ChatCompletionRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
-
-# Eye Doctor chat model classes
-class EyeDoctorRequest(BaseModel):
-    """Eye doctor chat request model"""
-    disease_name: str = Field(..., description="Name of the diagnosed disease")
-    disease_category: str = Field(..., description="Category of the disease")
-    result: str = Field(..., description="Examination result")
-    remark: Optional[str] = Field(None, description="Additional remarks")
-    treatment_plan: Optional[Dict[str, Any]] = Field(None, description="Treatment plan details")
-    medications: Optional[list] = Field(None, description="List of medications")
-    previous_conversations: Optional[list] = Field(None, description="Previous conversation history")
-    question: str = Field(..., description="Patient's question")
-    model: Optional[str] = Field(None, description="LLM model to use")
-    temperature: Optional[float] = Field(0.7, description="Temperature for generation", ge=0.0, le=2.0)
-    max_tokens: Optional[int] = Field(None, description="Maximum tokens to generate")
-    stream: Optional[bool] = Field(False, description="Whether to stream the response")
-
-class EyeDoctorResponse(BaseModel):
-    """Eye doctor chat response model"""
-    response_id: str = Field(..., description="Unique response ID")
-    content: str = Field(..., description="Response content")
-    references: Optional[list] = Field(None, description="References used")
-    created_at: str = Field(..., description="Response creation timestamp")
 
 # Eye Doctor chat endpoint
 @app.post("/api/eye-doctor/chat", response_model=EyeDoctorResponse)
@@ -259,6 +242,73 @@ async def eye_doctor_chat(request: EyeDoctorRequest):
         
     except Exception as e:
         logger.error(f"Error in eye doctor chat: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+# AI recommendation endpoint
+@app.post("/api/eye-doctor/recommendations", response_model=AIRecommendationResponse)
+async def get_ai_recommendations(request: AIRecommendationRequest):
+    """
+    Get AI-generated medication and treatment recommendations
+    
+    Receives patient data and diagnosis information, analyzes it using the LLM,
+    and returns recommended medications and treatment plan
+    """
+    try:
+        # Convert request to dictionary
+        request_data = request.model_dump()
+        
+        # Call the eye doctor recommendation service
+        result = await llm_service.get_eye_doctor_recommendations(
+            request_data=request_data,
+            stream=request.stream
+        )
+        
+        # Handle streaming response
+        if request.stream and result.get("stream"):
+            async def generate():
+                try:
+                    complete_content = ""
+                    
+                    async for chunk in result["stream"]:
+                        content = chunk.choices[0].delta.content or ""
+                        complete_content += content
+                        
+                        # Check if this is the last chunk
+                        is_complete = chunk.choices[0].finish_reason is not None
+                        
+                        if is_complete:
+                            try:
+                                # Parse the complete content as JSON
+                                recommendations = json.loads(complete_content)
+                                yield f"data: {json.dumps(recommendations)}\n\n"
+                            except json.JSONDecodeError as e:
+                                logger.error(f"Error parsing recommendations JSON: {str(e)}")
+                                yield f"data: {json.dumps({'error': 'Invalid recommendations format'})}\n\n"
+                        else:
+                            yield f"data: {content}\n\n"
+                        
+                except Exception as e:
+                    logger.error(f"Error in streaming: {str(e)}")
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                finally:
+                    yield "data: [DONE]\n\n"
+                    
+            return StreamingResponse(generate(), media_type="text/event-stream")
+            
+        # Handle regular response
+        if result.get("recommendations"):
+            return result["recommendations"]
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate recommendations"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in AI recommendations: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)

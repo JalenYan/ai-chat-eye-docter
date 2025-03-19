@@ -20,7 +20,7 @@ def init_app():
     service_port = Port
     # 初始化Nacos客户端
     nacos_client = NacosClient(
-        server_addresses=f"http://{NACOS_SERVER_ADDRESS}",  # 明确端口
+        server_addresses=f"http://{NACOS_SERVER_ADDRESS}:{NACOS_PORT}",  # 明确端口
         namespace=NACOS_NAMESPACE,
     )
     try:
@@ -51,6 +51,6 @@ def send_heartbeat(nacos_client, service_port):
             port=service_port,
             group_name=NACOS_GROUP_NAME
         )
-        print(f"✅ 端口 {service_port} 心跳发送成功")
+        # print(f"✅ 端口 {service_port} 心跳发送成功")
     except NacosException as e:
         print(f"❌ 端口 {service_port} 心跳发送失败: {str(e)}")

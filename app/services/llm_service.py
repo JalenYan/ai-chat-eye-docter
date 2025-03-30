@@ -9,6 +9,7 @@ from ..utils.prompts import construct_prompt, construct_recommendation_prompt
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("apscheduler").propagate = False
 logger = logging.getLogger(__name__)
 
 class LLMService:
